@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div>
+  <ul class="nav nav-tabs" id="categoryTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="kaggle-tab" data-bs-toggle="tab" data-bs-target="#kaggle" type="button" role="tab">Kaggle</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="study-tab" data-bs-toggle="tab" data-bs-target="#study" type="button" role="tab">Study</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="professional-tab" data-bs-toggle="tab" data-bs-target="#professional" type="button" role="tab">Professional</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" type="button" role="tab">Language Charts</button>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-4" id="tabContent">
+    <div class="tab-pane fade show active" id="kaggle" role="tabpanel">
+      <div class="table-wrap">
+        <table class="table table-bordered table-hover" id="table-kaggle">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Language</th>
+              <th scope="col">GitHub URL</th>
+              <th scope="col">Stars</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="study" role="tabpanel">
+      <div class="table-wrap">
+        <table class="table table-bordered table-hover" id="table-study">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Language</th>
+              <th scope="col">GitHub URL</th>
+              <th scope="col">Stars</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="professional" role="tabpanel">
+      <div class="table-wrap">
+        <table class="table table-bordered table-hover" id="table-professional">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Language</th>
+              <th scope="col">GitHub URL</th>
+              <th scope="col">Stars</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="chart" role="tabpanel">
+      <div class="row gy-4">
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Kaggle Languages</h5>
+              <canvas id="chart-kaggle"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Study Languages</h5>
+              <canvas id="chart-study"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Professional Languages</h5>
+              <canvas id="chart-professional"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const statusBadge = document.getElementById('statusBadge');
+const refreshButton = document.getElementById('refreshButton');
+const charts = {};
+
+function setStatus(text, variant = 'secondary') {
+  statusBadge.textContent = text;
+  statusBadge.className = `badge bg-${variant} ms-2`;
+}
+
+function formatStars(value) {
+  if (value >= 1000) {
+    return (value / 1000).toFixed(1) + 'K';
+  }
+  return value;
+}
+
+function buildTable(category, items) {
+  const tbody = document.querySelector(`#table-${category} tbody`);
+  tbody.innerHTML = '';
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No repositories found.</td></tr>';
+    return;
+  }
+
+  items.forEach(repo => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${repo.language}</td>
+      <td><a class="repo-link" href="${repo.github_url}" target="_blank">${repo.github_url}</a></td>
+      <td>${formatStars(repo.stars)}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function buildChart(canvasId, stats) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const labels = stats.map(item => item.language);
+  const values = stats.map(item => item.percent);
+
+  if (charts[canvasId]) {
+    charts[canvasId].destroy();
+  }
+
+  charts[canvasId] = new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: [
+          '#0d6efd','#6610f2','#198754','#fd7e14','#dc3545','#20c997','#0dcaf0','#6f42c1','#ffc107','#d63384'
+        ].slice(0, labels.length),
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom'
+        }
+      }
+    }
+  });
+}
+
+async function fetchData(refresh = false) {
+  setStatus(refresh ? 'Refreshing...' : 'Loading...', 'info');
+  const endpoint = refresh ? '/api/refresh' : '/api/data';
+  const method = refresh ? 'POST' : 'GET';
+
+  try {
+    const response = await fetch(endpoint, { method });
+    const payload = await response.json();
+    if (response.ok) {
+      buildTable('kaggle', payload.categories.kaggle);
+      buildTable('study', payload.categories.study);
+      buildTable('professional', payload.categories.professional);
+      buildChart('chart-kaggle', payload.language_stats.kaggle);
+      buildChart('chart-study', payload.language_stats.study);
+      buildChart('chart-professional', payload.language_stats.professional);
+      setStatus(`Updated ${new Date(payload.updated_at).toLocaleString()}`, 'success');
+    } else {
+      throw new Error(payload.error || 'Unable to load data');
+    }
+  } catch (error) {
+    setStatus('Error loading data', 'danger');
+    console.error(error);
+  }
+}
+
+refreshButton.addEventListener('click', () => fetchData(true));
+window.addEventListener('DOMContentLoaded', () => fetchData(false));
+</script>
+{% endblock %}
